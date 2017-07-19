@@ -1,5 +1,5 @@
 # repo-tweet
-A tool which sends notifications via twitter for PRs posted in the repository
+A tool which sends notifications via twitter for PRs posted in a GitHub repository
 
 
 ## Objective
@@ -14,13 +14,14 @@ Write a program that will poll a GitHub repo, look for new pull requests, and tw
 
 
 ## Installation / Setup (tested on MacOS)
-> pip install virtualenv
-> virtualenv ENV
-> cd ENV
-> source bin/activate
-> pip install -r requirements.txt
-> 
-> **Note** if a virtual environment isn't available or not desired, only the last step is needed.
+``pip install virtualenv
+virtualenv ENV
+cd ENV
+source bin/activate
+pip install -r requirements.txt
+``
+
+**Note** if a virtual environment isn't available or not desired, only the last step is needed.
 
 
 ## Running the test
