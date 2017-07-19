@@ -24,6 +24,9 @@ class GitTwitty():
         self.private_data = self.load_private_data()
         self.twitter_bearer_token = self.twitter_get_bearer_token()
 
+        # we will use this to save state
+        self.id_of_last_github_pr = None
+
     @staticmethod
     def load_private_data():
         """
@@ -40,11 +43,13 @@ class GitTwitty():
             If there are no PRs, returns an empty list
         """
         token = self.private_data['github']['api_token']
-
         url = 'https://api.github.com/repos/%s' % self.private_data['github']['repo_name']
-
         headers = {'Authorization': 'token %s' % token}
         resp = requests.get('%s/pulls?state=all' % url, headers=headers)
+
+        number_of_last_pr_tweeted = 0
+        if 'last_pr_tweeted' in self.private_data['twitter']:
+            number_of_last_pr_tweeted = int(self.private_data['twitter']['last_pr_tweeted'])
 
         prs = []
         if resp.status_code == 200:
@@ -53,13 +58,17 @@ class GitTwitty():
             if len(data) == 0:
                 print("WARNING: no prs found")
             else:
-                for i in range(0, len(data)):
-                    login = data[i]['user']['login']
+                for i in range(len(data)-1, -1, -1):
                     full_name = data[i]['base']['repo']['full_name']
-                    body = data[i]['body']
                     url = data[i]['html_url']
-                    pr_string = '%s has created a pull request in %s: %s - %s' % (login, full_name, body, url)
-                    prs.append(pr_string)
+                    number = data[i]['number']
+                    title = data[i]['title']
+
+                    if int(number) > number_of_last_pr_tweeted:
+                        pr_string = 'pull request #%s created in %s "%s" %s' % (number, full_name, title, url)
+                        prs.append(pr_string)
+
+                    self.id_of_last_github_pr = number
         else:
             print('ERROR: failed to retrieve github prs')
 
@@ -117,18 +126,33 @@ class GitTwitty():
         print('updating twitter status with message: %s' % msg)
 
         api = twitter.Api(**self.private_data['twitter']['keys'])
-        print(api.VerifyCredentials())
         status = api.PostUpdate(msg)
 
-        print(status)
+        if 'created_at' in json.loads(status):
+            print('success!')
+
+    def update_last_pr(self):
+        """
+            the attribute id_of_last_github_pr is being tracked in github_get_prs():
+
+            if it exists, then update the private json file with the number
+        """
+        if self.id_of_last_github_pr:
+            self.private_data['twitter']['last_pr_tweeted'] = self.id_of_last_github_pr
+
+            with open(PRIVATE_DATA_FILE, mode='w') as priv_file:
+                json.dump(self.private_data, priv_file)
 
 
 def main():
     """
         Steps:
             Get GitHub pull requests
+               If no PRs then exit
+               If no PRs newer than the last PR that was tweeted then exit
             Get Twitter timeline
             Compare the two and create tweets for any prs not in the timeline
+            Save ID of the last PR to be tweeted
 
         Usage:
             save a copy of private data to: private.json
@@ -146,16 +170,23 @@ def main():
 
     # get a list of github prs
     prs = gty.github_get_prs()
+    if len(prs) == 0:
+        print('no new prs to process')
+        exit(0)
 
     # get all tweets in the timeline
+    # TODO: this isn't necessary anymore since I'm tracking the last PR that's been tweeted
+    #       but since this code actually utilizes the requests module to interact with twitter's api
+    #       and the twitter_status_update does not, I'm leaving it here.
     tweets = gty.twitter_get_timeline()
 
     # compare github prs to tweets and create a new tweet for each one that's missing missing
     for pull in prs:
-        if pull in tweets:
-            pass
-        else:
+        if pull not in tweets:
             gty.twitter_status_update(pull)
+
+    # update private json with the last pr that was tweeted, so that subsequent runs don't repeat work
+    gty.update_last_pr()
 
 
 if __name__ == '__main__':
